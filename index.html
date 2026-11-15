@@ -85,6 +85,7 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 <main>
 <section id="home" class="panel">
 <h2>クイズ設定</h2><div class="sub">出題方向と問題数を選んでスタートしよう。</div>
+<label for="mode">出題モード</label><select id="mode"><option value="choice">4択モード</option><option value="typing">記述打ち込みモード</option></select>
 <label for="direction">出題方向</label><select id="direction"><option value="ja">日本語 → アルファベット</option><option value="en">アルファベット → 日本語</option><option value="mix">ランダム（両方向）</option></select>
 <label for="count">問題数</label><select id="count"><option value="10">10問</option><option value="20">20問</option><option value="all">全問</option></select>
 <button id="start" style="width:100%">クイズを始める</button>
@@ -93,12 +94,12 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 <section id="quiz" class="panel hidden">
 <div class="meta"><span id="number">第1問</span><span id="scoreNow">正解 0</span></div><div class="progress"><div id="bar" class="bar"></div></div>
 <div class="small" id="instruction"></div><div id="question" class="question"></div>
-<div id="choices" class="choices"></div><div id="feedback" class="feedback" aria-live="polite"></div>
+<div id="choices" class="choices"></div><div id="typingArea" class="hidden"><input id="typedAnswer" type="text" autocomplete="off" placeholder="答えを入力" aria-label="答えを入力" style="width:100%;min-height:54px;padding:14px;border:1.5px solid #cbdacf;border-radius:13px;font:inherit;font-size:17px;margin-top:18px"><button id="submitTyped" style="width:100%;margin-top:10px">回答する</button><p class="small">登録された正解・別解と完全一致した場合のみ正解になります。</p></div><div id="feedback" class="feedback" aria-live="polite"></div>
 <button id="next" class="hidden" style="width:100%">次の問題へ</button>
 </section>
 <section id="result" class="panel hidden">
 <h2>結果</h2><div id="score" class="score"></div><p id="message" class="sub" style="text-align:center"></p>
-<div class="row"><button id="retry">もう一度挑戦</button><button id="back" class="secondary">設定に戻る</button></div>
+<div class="row"><button id="retry">もう一度挑戦</button><button id="retryMissed" class="secondary">間違えた問題だけ</button><button id="back" class="secondary">設定に戻る</button></div>
 <h2 style="margin-top:24px">間違えた問題</h2><div id="review"></div>
 </section>
 <p class="small" style="text-align:center">学習用クイズ｜回答はこの端末内で処理されます</p>
@@ -107,14 +108,19 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 const terms=[
 ["AI","人工知能"],["APEC","アジア太平洋経済協力"],["ASEAN","東南アジア諸国連合"],["ATM","現金自動預払機"],["BRICS","ブラジル・ロシア・インド・中国・南アフリカなどの新興国"],["COP","締約国会議"],["CPTPP","環太平洋パートナーシップに関する包括的及び先進的な協定"],["CSR","企業の社会的責任"],["DV","ドメスティック・バイオレンス"],["EPA","経済連携協定"],["EU","欧州連合"],["FTA","自由貿易協定"],["GDP","国内総生産"],["GNI","国民総所得"],["GPS","全地球測位システム"],["IAEA","国際原子力機関"],["ICT","情報通信技術"],["JICA","国際協力機構"],["NAFTA","北米自由貿易協定"],["NGO","非政府組織"],["NIES","新興工業経済地域"],["NPO","非営利組織"],["NPT","核兵器不拡散条約"],["ODA","政府開発援助"],["PKO","国連平和維持活動"],["PL","製造物責任"],["POS","販売時点情報管理"],["PPP","購買力平価"],["RCEP","地域的な包括的経済連携協定"],["SDGs","持続可能な開発目標"],["SNS","ソーシャル・ネットワーキング・サービス"],["UNESCO","国際連合教育科学文化機関"],["UNHCR","国連難民高等弁務官事務所"],["UNICEF","国連児童基金"],["USMCA","米国・メキシコ・カナダ協定"],["WFP","国連世界食糧計画"],["WHO","世界保健機関"]
 ];
-let questions=[],index=0,correct=0,missed=[],locked=false,lastDirection="ja";
+let questions=[],index=0,correct=0,missed=[],locked=false,lastDirection="ja",activeMode="choice";
 const $=id=>document.getElementById(id);
 $("total").textContent="登録語数："+terms.length+"語";
 function shuffle(a){return [...a].sort(()=>Math.random()-.5)}
 function makeQuestions(){
  const dir=$("direction").value;let n=$("count").value==="all"?terms.length:Number($("count").value);
+ activeMode=$("mode").value;
  questions=shuffle(terms).slice(0,n).map(t=>({term:t,dir:dir==="mix"?(Math.random()<.5?"ja":"en"):dir}));
  index=0;correct=0;missed=[];show("quiz");render();
+}
+function retryMissed(){
+ if(!missed.length)return;
+ questions=shuffle(missed);index=0;correct=0;missed=[];activeMode=$("mode").value;show("quiz");render();
 }
 function show(id){["home","quiz","result"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
 function render(){
@@ -125,10 +131,18 @@ function render(){
  $("instruction").textContent=ja?"次の言葉の略称を選ぼう":"次の略称の意味を選ぼう";
  $("question").textContent=ja?q.term[1]:q.term[0];
  const correctAnswer=ja?q.term[0]:q.term[1];
- const pool=shuffle(terms.filter(t=>t!==q.term)).slice(0,3).map(t=>ja?t[0]:t[1]);
- const opts=shuffle([correctAnswer,...pool]);$("choices").innerHTML="";
- opts.forEach(opt=>{const b=document.createElement("button");b.className="choice";b.textContent=opt;b.onclick=()=>answer(b,opt,correctAnswer);$("choices").appendChild(b)});
- $("feedback").textContent="";$("next").classList.add("hidden");
+ $("choices").innerHTML="";
+ $("choices").classList.toggle("hidden",activeMode==="typing");
+ $("typingArea").classList.toggle("hidden",activeMode!=="typing");
+ if(activeMode==="typing"){
+  $("typedAnswer").value="";$("typedAnswer").disabled=false;$("submitTyped").disabled=false;
+  setTimeout(()=>$("typedAnswer").focus(),50);
+ }else{
+  const pool=shuffle(terms.filter(t=>t!==q.term)).slice(0,3).map(t=>ja?t[0]:t[1]);
+  const opts=shuffle([correctAnswer,...pool]);
+  opts.forEach(opt=>{const b=document.createElement("button");b.className="choice";b.textContent=opt;b.onclick=()=>answer(b,opt,correctAnswer);$("choices").appendChild(b)});
+ }
+ $("feedback").textContent="";$("feedback").style.background="transparent";$("next").classList.add("hidden");
 }
 function answer(btn,opt,answer){
  if(locked)return;locked=true;const ok=opt===answer;
@@ -137,12 +151,26 @@ function answer(btn,opt,answer){
  [...$("choices").children].forEach(b=>{b.disabled=true;if(b.textContent===answer)b.classList.add("correct")});
  $("scoreNow").textContent="正解 "+correct+"問";$("next").textContent=index===questions.length-1?"結果を見る":"次の問題へ";$("next").classList.remove("hidden");
 }
+function submitTyped(){
+ if(locked||activeMode!=="typing")return;
+ const q=questions[index],ja=q.dir==="ja",typed=$("typedAnswer").value;
+ const expected=ja?q.term[0]:q.term[1];
+ const ok=typed===expected;
+ locked=true;$("typedAnswer").disabled=true;$("submitTyped").disabled=true;
+ if(ok){correct++;$("feedback").textContent="正解！";$("feedback").style.color="#247343";$("feedback").style.background="#e8f5eb";}
+ else{missed.push(q);$("feedback").textContent="不正解。模範解答："+expected+"\\n登録された正解と完全一致する必要があります。";$("feedback").style.color="#873d33";$("feedback").style.background="#fff1ee";}
+ $("scoreNow").textContent="正解 "+correct+"問";
+ $("next").textContent=index===questions.length-1?"結果を見る":"次の問題へ";$("next").classList.remove("hidden");
+}
+$("submitTyped").onclick=submitTyped;
+$("typedAnswer").addEventListener("keydown",e=>{if(e.key==="Enter")submitTyped()});
 $("next").onclick=()=>{index++;if(index<questions.length)render();else finish()};
 function finish(){
  show("result");$("bar").style.width="100%";$("score").textContent=correct+" / "+questions.length;
  $("message").textContent=correct===questions.length?"全問正解！すばらしい！":correct/questions.length>=.8?"よくできたね！間違えた問題を確認しよう。":"間違えた問題を復習して、もう一度挑戦しよう！";
  $("review").innerHTML=missed.length?missed.map(q=>'<div class="review-item"><b>'+(q.dir==="ja"?q.term[1]:q.term[0])+'</b><br>答え：'+(q.dir==="ja"?q.term[0]:q.term[1])+'</div>').join(""):'<p class="sub">間違いなし！</p>';
+ $("retryMissed").disabled=missed.length===0;
 }
-$("start").onclick=makeQuestions;$("retry").onclick=makeQuestions;$("back").onclick=()=>show("home");
+$("start").onclick=makeQuestions;$("retry").onclick=makeQuestions;$("retryMissed").onclick=retryMissed;$("back").onclick=()=>show("home");
 </script>
 </body></html>
