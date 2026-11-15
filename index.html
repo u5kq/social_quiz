@@ -66,6 +66,12 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 .score{font-size:clamp(42px,10vw,54px);color:var(--green);font-weight:900;text-align:center;margin:18px 12px;letter-spacing:.02em}
 .review-item{border-top:1px solid var(--line);padding:14px 3px;font-size:14px;line-height:1.8}
 #total{margin:13px 2px 0}
+.study-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:13px 0;border-bottom:1px solid var(--line);align-items:center}
+.study-cell{min-width:0;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.study-cell strong{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.04em}
+.masked{display:inline-block;min-width:62px;padding:3px 8px;border-radius:7px;background:#e9efeb;color:#718078;letter-spacing:.12em;font-weight:800}
+.reveal-one{margin-top:7px;padding:7px 10px;font-size:11px;border-radius:8px;box-shadow:none}
+@media(max-width:420px){.study-row{gap:6px}.study-cell{font-size:13px}}
 #instruction{display:inline-block;padding:5px 9px;border-radius:7px;background:#edf4ef;color:#41634d;font-weight:700}
 #next{margin-top:8px;min-height:50px}
 @media(max-width:420px){
@@ -89,7 +95,17 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 <label for="direction">出題方向</label><select id="direction"><option value="ja">日本語 → アルファベット</option><option value="en">アルファベット → 日本語</option><option value="mix">ランダム（両方向）</option></select>
 <label for="count">問題数</label><select id="count"><option value="10">10問</option><option value="20">20問</option><option value="all">全問</option></select>
 <button id="start" style="width:100%">クイズを始める</button>
+<button id="openStudy" class="secondary" style="width:100%;margin-top:10px">単語を一覧で暗記する</button>
 <p class="small" id="total"></p>
+</section>
+<section id="study" class="panel hidden">
+<h2>単語一覧で暗記</h2>
+<p class="sub">覚えたい側を隠して、一覧を見ながら思い出そう。</p>
+<label for="maskSide">隠す項目</label>
+<select id="maskSide"><option value="abbr">アルファベット略称を隠す</option><option value="ja">日本語の意味を隠す</option><option value="none">隠さずに表示</option></select>
+<div class="row"><button id="toggleAll" class="secondary">隠した項目をすべて表示</button><button id="shuffleStudy" class="secondary">順番をシャッフル</button></div>
+<div id="studyList"></div>
+<button id="studyBack" class="secondary" style="width:100%;margin-top:16px">設定に戻る</button>
 </section>
 <section id="quiz" class="panel hidden">
 <div class="meta"><span id="number">第1問</span><span id="scoreNow">正解 0</span></div><div class="progress"><div id="bar" class="bar"></div></div>
@@ -122,7 +138,26 @@ function retryMissed(){
  if(!missed.length)return;
  questions=shuffle(missed);index=0;correct=0;missed=[];activeMode=$("mode").value;show("quiz");render();
 }
-function show(id){["home","quiz","result"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+function show(id){["home","study","quiz","result"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+let studyTerms=[...terms],showAllStudy=false;
+function renderStudy(){
+ const side=$("maskSide").value;
+ $("toggleAll").textContent=showAllStudy?"すべて隠す":"隠した項目をすべて表示";
+ $("studyList").innerHTML=studyTerms.map((t,i)=>{
+  const hideAbbr=side==="abbr"&&!showAllStudy,hideJa=side==="ja"&&!showAllStudy;
+  return '<div class="study-row"><div class="study-cell"><strong>略称</strong><span class="'+(hideAbbr?'masked':'')+'">'+(hideAbbr?'••••':t[0])+'</span>'+(hideAbbr?'<br><button class="reveal-one secondary" data-index="'+i+'" data-side="abbr">この語を表示</button>':'')+'</div><div class="study-cell"><strong>日本語の意味</strong><span class="'+(hideJa?'masked':'')+'">'+(hideJa?'••••••':t[1])+'</span>'+(hideJa?'<br><button class="reveal-one secondary" data-index="'+i+'" data-side="ja">この語を表示</button>':'')+'</div></div>';
+ }).join("");
+ document.querySelectorAll(".reveal-one").forEach(b=>b.onclick=()=>{
+  const i=Number(b.dataset.index),side=b.dataset.side;
+  const cell=b.parentElement;const value=side==="abbr"?studyTerms[i][0]:studyTerms[i][1];
+  cell.querySelector("span").textContent=value;cell.querySelector("span").classList.remove("masked");b.remove();
+ });
+}
+$("openStudy").onclick=()=>{studyTerms=[...terms];showAllStudy=false;show("study");renderStudy()};
+$("maskSide").onchange=()=>{showAllStudy=false;renderStudy()};
+$("toggleAll").onclick=()=>{showAllStudy=!showAllStudy;renderStudy()};
+$("shuffleStudy").onclick=()=>{studyTerms=shuffle(studyTerms);renderStudy()};
+$("studyBack").onclick=()=>show("home");
 function render(){
  locked=false;const q=questions[index],ja=q.dir==="ja";lastDirection=q.dir;
  $("number").textContent="第"+(index+1)+"問 / "+questions.length+"問";
