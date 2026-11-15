@@ -66,6 +66,9 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 .score{font-size:clamp(42px,10vw,54px);color:var(--green);font-weight:900;text-align:center;margin:18px 12px;letter-spacing:.02em}
 .review-item{border-top:1px solid var(--line);padding:14px 3px;font-size:14px;line-height:1.8}
 #total{margin:13px 2px 0}
+#cardFront{font-size:clamp(22px,5vw,29px);overflow-wrap:anywhere}
+#cardBack{overflow-wrap:anywhere}
+#cardRate button{min-width:0}
 .study-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:13px 0;border-bottom:1px solid var(--line);align-items:center}
 .study-cell{min-width:0;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
 .study-cell strong{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.04em}
@@ -96,7 +99,20 @@ select{width:100%;padding:14px 42px 14px 14px;border:1px solid #d4e0d7;border-ra
 <label for="count">問題数</label><select id="count"><option value="10">10問</option><option value="20">20問</option><option value="all">全問</option></select>
 <button id="start" style="width:100%">クイズを始める</button>
 <button id="openStudy" class="secondary" style="width:100%;margin-top:10px">単語を一覧で暗記する</button>
+<button id="openCards" class="secondary" style="width:100%;margin-top:9px">一問ずつ暗記トレーニング</button>
 <p class="small" id="total"></p>
+</section>
+<section id="cards" class="panel hidden">
+<h2>一問ずつ暗記トレーニング</h2>
+<div class="meta"><span id="cardProgress">1 / 37</span><span id="cardMastered">覚えた 0語</span></div>
+<div class="progress"><div id="cardBar" class="bar"></div></div>
+<p class="sub" id="cardDirection">日本語を見て、略称を思い出そう。</p>
+<div id="cardFront" class="question" style="min-height:90px;display:flex;align-items:center;justify-content:center;text-align:center;background:#f1f6f2;border-radius:16px;padding:20px"></div>
+<div id="cardBack" class="hidden" style="text-align:center;padding:18px;font-size:20px;font-weight:850;color:#245640;line-height:1.6"></div>
+<button id="flipCard" style="width:100%;margin-top:12px">答えを見る</button>
+<div id="cardRate" class="row hidden"><button id="cardAgain" class="secondary">まだ覚えていない</button><button id="cardKnown">覚えた！</button></div>
+<p class="small" id="cardHint" style="text-align:center;margin-top:12px">思い出してから答えを確認しよう。</p>
+<button id="cardsBack" class="secondary" style="width:100%;margin-top:14px">設定に戻る</button>
 </section>
 <section id="study" class="panel hidden">
 <h2>単語一覧で暗記</h2>
@@ -138,7 +154,36 @@ function retryMissed(){
  if(!missed.length)return;
  questions=shuffle(missed);index=0;correct=0;missed=[];activeMode=$("mode").value;show("quiz");render();
 }
-function show(id){["home","study","quiz","result"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+function show(id){["home","study","cards","quiz","result"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+let cardQueue=[],cardIndex=0,cardRevealed=false,cardMastered=new Set(JSON.parse(localStorage.getItem("socialQuizMastered")||"[]"));
+function saveCardProgress(){localStorage.setItem("socialQuizMastered",JSON.stringify([...cardMastered]))}
+function updateCardProgress(){
+ $("cardProgress").textContent=Math.min(cardIndex+1,cardQueue.length)+" / "+cardQueue.length;
+ $("cardMastered").textContent="覚えた "+cardMastered.size+"語";
+ $("cardBar").style.width=(cardIndex/cardQueue.length*100)+"%";
+}
+function renderCard(){
+ if(cardIndex>=cardQueue.length){
+  $("cardFront").textContent="今回のトレーニング終了！";
+  $("cardBack").textContent="覚えた語："+cardMastered.size+" / "+terms.length+"語";
+  $("cardBack").classList.remove("hidden");$("flipCard").classList.add("hidden");$("cardRate").classList.add("hidden");
+  $("cardHint").textContent="「設定に戻る」から、もう一度挑戦できます。";
+  $("cardProgress").textContent=cardQueue.length+" / "+cardQueue.length;$("cardBar").style.width="100%";return;
+ }
+ cardRevealed=false;const t=cardQueue[cardIndex];
+ $("cardDirection").textContent="日本語を見て、略称を思い出そう。";
+ $("cardFront").textContent=t[1];$("cardBack").textContent=t[0];$("cardBack").classList.add("hidden");
+ $("flipCard").textContent="答えを見る";$("flipCard").classList.remove("hidden");$("cardRate").classList.add("hidden");
+ $("cardHint").textContent="頭の中で答えてから、答えを確認しよう。";updateCardProgress();
+}
+function startCards(){
+ cardQueue=shuffle(terms);cardIndex=0;show("cards");renderCard();
+}
+$("openCards").onclick=startCards;
+$("flipCard").onclick=()=>{if(cardIndex>=cardQueue.length)return;cardRevealed=true;$("cardBack").classList.remove("hidden");$("flipCard").classList.add("hidden");$("cardRate").classList.remove("hidden");$("cardHint").textContent="思い出せた？自分で判定して次へ進もう。"};
+$("cardAgain").onclick=()=>{const t=cardQueue[cardIndex];cardQueue.push(t);cardIndex++;renderCard()};
+$("cardKnown").onclick=()=>{cardMastered.add(cardQueue[cardIndex][0]);saveCardProgress();cardIndex++;renderCard()};
+$("cardsBack").onclick=()=>show("home");
 let studyTerms=[...terms],showAllStudy=false;
 function renderStudy(){
  const side=$("maskSide").value;
